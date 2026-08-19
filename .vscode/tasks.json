@@ -11,8 +11,8 @@
                 "-mavx2",
                 "${file}",
                 "-o",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe"
-                
+                "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                "-lm"
             ],
             "options": {
                 "cwd": "${fileDirname}"

@@ -2,9 +2,12 @@
 #include <math.h>
 #include <immintrin.h>
 #include <string.h>
+#include <time.h>
+#include <windows.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
+#define REPEAT 10000
 #endif
 
 static void swap(float *a, float *b) {
@@ -218,221 +221,55 @@ void fft(float *real, float *imag, int N) {
 }
 
 
-static void print_complex(
-    const char *title,
-    const float *real,
-    const float *imag,
-    int N)
-{
-    printf("\n%s\n", title);
-
-    for (int i = 0; i < N; i++)
-    {
-        printf(
-            "[%2d] %12.6f %+.6fi\n",
-            i,
-            real[i],
-            imag[i]
-        );
-    }
-}
 
 
-/* =========================================================
- * 比较标量 FFT 与 AVX FFT
- * ========================================================= */
-static void compare_result(
-    const float *scalar_real,
-    const float *scalar_imag,
-    const float *avx_real,
-    const float *avx_imag,
-    int N)
-{
-    printf("\n误差比较：\n");
-
-    float max_error = 0.0f;
-
-    for (int i = 0; i < N; i++)
-    {
-        float error_real =
-            fabsf(scalar_real[i] - avx_real[i]);
-
-        float error_imag =
-            fabsf(scalar_imag[i] - avx_imag[i]);
-
-        float error =
-            error_real > error_imag
-            ? error_real
-            : error_imag;
-
-        if (error > max_error)
-            max_error = error;
-
-        printf(
-            "[%2d] real error = %.8f   imag error = %.8f\n",
-            i,
-            error_real,
-            error_imag
-        );
-    }
-
-    printf("\n最大误差 = %.10f\n", max_error);
-
-    if (max_error < 1e-4f)
-        printf("结果：PASS\n");
-    else
-        printf("结果：FAIL\n");
-}
 
 
-/* =========================================================
- * 通用测试函数
- * ========================================================= */
-static void run_test(
-    const char *name,
-    const float *input,
-    int N)
-{
-    /*
-     * 你的 AVX 代码使用 _mm256_load_ps，
-     * 所以这里显式使用 32 字节对齐。
-     *
-     * 同时至少分配 16 个元素，
-     * 避免 N=4 时 AVX 一次读取 8 个 float 越界。
-     */
-    _Alignas(32) float scalar_real[16] = {0};
-    _Alignas(32) float scalar_imag[16] = {0};
-
-    _Alignas(32) float avx_real[16] = {0};
-    _Alignas(32) float avx_imag[16] = {0};
-
-    for (int i = 0; i < N; i++)
-    {
-        scalar_real[i] = input[i];
-        avx_real[i] = input[i];
-
-        scalar_imag[i] = 0.0f;
-        avx_imag[i] = 0.0f;
-    }
-
-    printf("\n");
-    printf("=================================================\n");
-    printf("%s\n", name);
-    printf("=================================================\n");
-
-    print_complex(
-        "原始输入：",
-        scalar_real,
-        scalar_imag,
-        N
-    );
-
-
-    /* 标量 FFT */
-    fft(
-        scalar_real,
-        scalar_imag,
-        N
-    );
-
-
-    /* AVX FFT */
-    fft_avx256(
-        avx_real,
-        avx_imag,
-        N
-    );
-
-
-    print_complex(
-        "标量 FFT 结果：",
-        scalar_real,
-        scalar_imag,
-        N
-    );
-
-
-    print_complex(
-        "AVX FFT 结果：",
-        avx_real,
-        avx_imag,
-        N
-    );
-
-
-    compare_result(
-        scalar_real,
-        scalar_imag,
-        avx_real,
-        avx_imag,
-        N
-    );
-}
-
-
-/* =========================================================
- * main
- * ========================================================= */
 int main(void)
 {
-    /* -------------------------
-     * 4 点 FFT
-     * ------------------------- */
-    float input4[4] =
-    {
-        1.0f,
-        2.0f,
-        3.0f,
-        4.0f
+    LARGE_INTEGER start, end, freq;
+    int N = 8;
+    int repeat = 1000;
+    _Alignas(32) float real[8] = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        5.0f, 6.0f, 7.0f, 8.0f
     };
-
-
-    /* -------------------------
-     * 8 点 FFT
-     * ------------------------- */
-    float input8[8] =
-    {
-        1.0f,
-        2.0f,
-        3.0f,
-        4.0f,
-        5.0f,
-        6.0f,
-        7.0f,
-        8.0f
+    _Alignas(32) float imag[8] = {
+        0.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 0.0f
     };
+    _Alignas(32) float work_real[8];
+    _Alignas(32) float work_imag[8];
 
+    double total_us = 0.0;
 
-    /* -------------------------
-     * 16 点 FFT
-     * ------------------------- */
-    float input16[16] =
+    for (int r = 0; r < repeat; r++)
     {
-         1.0f,  2.0f,  3.0f,  4.0f,
-         5.0f,  6.0f,  7.0f,  8.0f,
-         9.0f, 10.0f, 11.0f, 12.0f,
-        13.0f, 14.0f, 15.0f, 16.0f
-    };
+        memcpy(work_real, real, sizeof(real));
+        memcpy(work_imag, imag, sizeof(imag));
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+        //fft(work_real, work_imag, N);
+        fft_avx256(work_real, work_imag, N);
 
+        QueryPerformanceCounter(&end);
 
-    run_test(
-        "4 点 FFT 测试",
-        input4,
-        4
-    );
+        total_us +=
+            (double)(end.QuadPart - start.QuadPart)
+            * 1000000.0
+            / (double)freq.QuadPart;
+    }
 
-    run_test(
-        "8 点 FFT 测试",
-        input8,
-        8
-    );
+    double avg_us = total_us ;
+    printf("freq = %lld\n", freq.QuadPart);
+    printf("delta = %lld\n", end.QuadPart - start.QuadPart);
+    printf("\nFFT OUT\n");
+    for (int k = 0; k < N; k++) {
+        printf("X[%d] = %f %+.6fi\n",k, work_real[k], work_imag[k]);
+    }
+    printf("FFT运行时间：%.6f us\n",avg_us);
 
-    run_test(
-        "16 点 FFT 测试",
-        input16,
-        16
-    );
-
+    
 
     return 0;
 }
