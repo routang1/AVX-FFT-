@@ -7,8 +7,11 @@
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
-#define REPEAT 10000
 #endif
+
+#define FFT_SIZE 4096
+#define REPEAT 1000
+#define OUTPUT_COUNT 8
 
 static void swap(float *a, float *b) {
     float temp = *a;
@@ -16,7 +19,7 @@ static void swap(float *a, float *b) {
     *b = temp;
 }
 
-// Î»·´×ª²Ù×÷
+// ä½åè½¬æ“ä½œ
 static void bit_reverse(float *real, float *imag, int N) {
     int j = 0;
     for (int i = 0; i < N - 1; i++) {
@@ -33,24 +36,25 @@ static void bit_reverse(float *real, float *imag, int N) {
     }
 }
 
-// ¿ìËÙ¸µÀïÒ¶±ä»»º¯Êı
+// å¿«é€Ÿå‚…é‡Œå¶å˜æ¢å‡½æ•°
 void fft_avx256(float *real, float *imag, int N) 
 {
     bit_reverse(real, imag, N);
-    float nn = N;
-    int* pn = (int*)&nn;
-    int log2N = ((*pn)>>23)-127;
+    int log2N = 0;
+    for (int n = N; n > 1; n >>= 1) {
+        log2N++;
+    }
 
     for (int s = 1; s <= log2N; s++) {
         int m = 1 << s;
-        float w_real_vec[8],w_imag_vec[8];
+        _Alignas(32) float w_real_vec[8], w_imag_vec[8];
         if(m==2)
         {
             for (int k = 0; k < N; k += 8) {
                 __m256 w_real = _mm256_set1_ps(-1.0f);
                 __m256 w_imag = _mm256_set1_ps(0.0f);
                 __m256 x_real = _mm256_load_ps(real + k);
-                //´Ó real[k] ¿ªÊ¼£¬Á¬Ğø¶ÁÈ¡ 8 ¸ö float£¬×°½øÒ»¸ö 256 Î» AVX ¼Ä´æÆ÷ x_real¡£
+                //ä» real[k] å¼€å§‹ï¼Œè¿ç»­è¯»å– 8 ä¸ª floatï¼Œè£…è¿›ä¸€ä¸ª 256 ä½ AVX å¯„å­˜å™¨ x_realã€‚
                 __m256 x_imag = _mm256_load_ps(imag + k);
                 __m256 a_real = _mm256_shuffle_ps(x_real,x_real,0b10100000);
                 __m256 a_imag = _mm256_shuffle_ps(x_imag,x_imag,0b10100000);
@@ -137,36 +141,31 @@ void fft_avx256(float *real, float *imag, int N)
         }
         else
         {
-            float wm_real = cos(2 * M_PI / m);
-            float wm_imag = -sin(2 * M_PI / m);
-            float w8_real,w8_imag;
-            
+            float wm_real = cosf((float)(2.0 * M_PI / m));
+            float wm_imag = -sinf((float)(2.0 * M_PI / m));
+
+            w_real_vec[0] = 1.0f;
+            w_imag_vec[0] = 0.0f;
+            for (int i = 1; i < 8; i++) {
+                w_real_vec[i] =
+                    w_real_vec[i - 1] * wm_real
+                    - w_imag_vec[i - 1] * wm_imag;
+                w_imag_vec[i] =
+                    w_real_vec[i - 1] * wm_imag
+                    + w_imag_vec[i - 1] * wm_real;
+            }
+
+            float w8_real =
+                w_real_vec[7] * wm_real - w_imag_vec[7] * wm_imag;
+            float w8_imag =
+                w_real_vec[7] * wm_imag + w_imag_vec[7] * wm_real;
+            __m256 w8_real_vec = _mm256_set1_ps(w8_real);
+            __m256 w8_imag_vec = _mm256_set1_ps(w8_imag);
+
             for (int k = 0; k < N; k += m) {
-                w_real_vec[0] = 1.0f;
-                w_imag_vec[0] = 0.0f;
-                w_real_vec[1] = wm_real;
-                w_imag_vec[1] = wm_imag;
-                w_real_vec[2] = w_real_vec[1] * wm_real - w_imag_vec[1] * wm_imag;
-                w_imag_vec[2] = w_real_vec[1] * wm_imag +  w_imag_vec[1] * wm_real;
-                w_real_vec[3] = w_real_vec[2] * wm_real - w_imag_vec[2] * wm_imag;
-                w_imag_vec[3] = w_real_vec[2] * wm_imag +  w_imag_vec[2] * wm_real;
-                w_real_vec[4] = w_real_vec[3] * wm_real - w_imag_vec[3] * wm_imag;
-                w_imag_vec[4] = w_real_vec[3] * wm_imag +  w_imag_vec[3] * wm_real;
-                w_real_vec[5] = w_real_vec[4] * wm_real - w_imag_vec[4] * wm_imag;
-                w_imag_vec[5] = w_real_vec[4] * wm_imag +  w_imag_vec[4] * wm_real;
-                w_real_vec[6] = w_real_vec[5] * wm_real - w_imag_vec[5] * wm_imag;
-                w_imag_vec[6] = w_real_vec[5] * wm_imag +  w_imag_vec[5] * wm_real;
-                w_real_vec[7] = w_real_vec[6] * wm_real - w_imag_vec[6] * wm_imag;
-                w_imag_vec[7] = w_real_vec[6] * wm_imag +  w_imag_vec[6] * wm_real;
-
-                w8_real = w_real_vec[7] * wm_real - w_imag_vec[7] * wm_imag;
-                w8_imag = w_real_vec[7] * wm_imag +  w_imag_vec[7] * wm_real;
-                __m256 w8_real_vec = _mm256_set1_ps(w8_real);
-                __m256 w8_imag_vec = _mm256_set1_ps(w8_imag);
-
+                __m256 w_real = _mm256_load_ps(w_real_vec);
+                __m256 w_imag = _mm256_load_ps(w_imag_vec);
                 for (int j = 0; j < m / 2; j+=8) {
-                    __m256 w_real = _mm256_load_ps(w_real_vec);
-                    __m256 w_imag = _mm256_load_ps(w_imag_vec);
                     __m256 x_real = _mm256_load_ps(real + k + j);
                     __m256 x_imag = _mm256_load_ps(imag + k + j);
                     __m256 x2_real = _mm256_load_ps(real + k + j + m/2);
@@ -181,8 +180,16 @@ void fft_avx256(float *real, float *imag, int N)
                     _mm256_store_ps(imag + k + j,rst_imag);
                     _mm256_store_ps(real + k + j + m/2,rst2_real);
                     _mm256_store_ps(imag + k + j + m/2,rst2_imag);
-                    w_real =_mm256_mul_ps(w_real,w8_real_vec);
-                    w_imag =_mm256_mul_ps(w_imag,w8_imag_vec); 
+
+                    __m256 next_w_real = _mm256_sub_ps(
+                        _mm256_mul_ps(w_real, w8_real_vec),
+                        _mm256_mul_ps(w_imag, w8_imag_vec)
+                    );
+                    w_imag = _mm256_add_ps(
+                        _mm256_mul_ps(w_real, w8_imag_vec),
+                        _mm256_mul_ps(w_imag, w8_real_vec)
+                    );
+                    w_real = next_w_real;
                 }
             }
         }
@@ -214,7 +221,7 @@ void fft(float *real, float *imag, int N) {
                 float temp_real = w_real * wm_real - w_imag * wm_imag;
                 w_imag = w_real * wm_imag + w_imag * wm_real;
                 w_real = temp_real;
-                //µü´úW£¨n,k£©
+                //è¿­ä»£Wï¼ˆn,kï¼‰
             }
         }
     }
@@ -225,51 +232,61 @@ void fft(float *real, float *imag, int N) {
 
 
 
+static void init_input(float *real, float *imag, int N)
+{
+    for (int i = 0; i < N; i++) {
+        float phase = (float)(2.0 * M_PI * i / N);
+        real[i] =
+            sinf(37.0f * phase)
+            + 0.5f * cosf(123.0f * phase)
+            + 0.25f * sinf(511.0f * phase);
+        imag[i] = 0.0f;
+    }
+}
+
 int main(void)
 {
-    LARGE_INTEGER start, end, freq;
-    int N = 8;
-    int repeat = 1000;
-    _Alignas(32) float real[8] = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        5.0f, 6.0f, 7.0f, 8.0f
-    };
-    _Alignas(32) float imag[8] = {
-        0.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 0.0f
-    };
-    _Alignas(32) float work_real[8];
-    _Alignas(32) float work_imag[8];
-
+    LARGE_INTEGER start;
+    LARGE_INTEGER end;
+    LARGE_INTEGER frequency;
+    _Alignas(32) float real[FFT_SIZE];
+    _Alignas(32) float imag[FFT_SIZE];
+    _Alignas(32) float work_real[FFT_SIZE];
+    _Alignas(32) float work_imag[FFT_SIZE];
     double total_us = 0.0;
 
-    for (int r = 0; r < repeat; r++)
-    {
+    init_input(real, imag, FFT_SIZE);
+    if (!QueryPerformanceFrequency(&frequency)) {
+        fprintf(stderr, "QueryPerformanceFrequency failed\n");
+        return 1;
+    }
+
+    /* ä¸è®¡æ—¶é¢„çƒ­ã€‚ */
+    memcpy(work_real, real, sizeof(real));
+    memcpy(work_imag, imag, sizeof(imag));
+    fft_avx256(work_real, work_imag, FFT_SIZE);
+
+    for (int r = 0; r < REPEAT; r++) {
         memcpy(work_real, real, sizeof(real));
         memcpy(work_imag, imag, sizeof(imag));
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-        //fft(work_real, work_imag, N);
-        fft_avx256(work_real, work_imag, N);
 
+        QueryPerformanceCounter(&start);
+        fft_avx256(work_real, work_imag, FFT_SIZE);
         QueryPerformanceCounter(&end);
 
         total_us +=
             (double)(end.QuadPart - start.QuadPart)
             * 1000000.0
-            / (double)freq.QuadPart;
+            / (double)frequency.QuadPart;
     }
 
-    double avg_us = total_us ;
-    printf("freq = %lld\n", freq.QuadPart);
-    printf("delta = %lld\n", end.QuadPart - start.QuadPart);
-    printf("\nFFT OUT\n");
-    for (int k = 0; k < N; k++) {
-        printf("X[%d] = %f %+.6fi\n",k, work_real[k], work_imag[k]);
+    printf("\nAVX2 FFT OUT (first %d bins)\n", OUTPUT_COUNT);
+    for (int k = 0; k < OUTPUT_COUNT; k++) {
+        printf("X[%d] = %f %+.6fi\n", k, work_real[k], work_imag[k]);
     }
-    printf("FFTÔËĞĞÊ±¼ä£º%.6f us\n",avg_us);
-
-    
+    printf("\nN = %d, repeat = %d\n", FFT_SIZE, REPEAT);
+    printf("AVX2 fft_avx256 average time: %.6f us\n",
+           total_us / (double)REPEAT);
 
     return 0;
 }
