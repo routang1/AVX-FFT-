@@ -6,3 +6,5 @@
 .vscode/.browse.VC.db*
 .vscode/ipch/
 .vscode/*.log
+
+AGENTS.md
