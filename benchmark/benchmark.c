@@ -14,6 +14,8 @@
 #define REPEAT 1000
 #define OUTPUT_COUNT 8
 
+
+//计算时间
 static double get_elapsed_us(
     LARGE_INTEGER start,
     LARGE_INTEGER end,
@@ -26,6 +28,8 @@ static double get_elapsed_us(
         / (double)frequency.QuadPart;
 }
 
+
+//生成信号
 static void init_input(float *real, float *imag, int N)
 {
     for (int i = 0; i < N; i++) {
@@ -38,6 +42,7 @@ static void init_input(float *real, float *imag, int N)
     }
 }
 
+//计算误差
 static double max_complex_error(
     const float *real_a,
     const float *imag_a,
@@ -60,6 +65,7 @@ static double max_complex_error(
 
     return max_error;
 }
+
 
 int main(void)
 {
@@ -86,7 +92,7 @@ int main(void)
         return 1;
     }
 
-    /* 两种实现都先执行一次不计时预热。 */
+    //两种算法都先执行一次不计时预热
     memcpy(mkl_real, real, sizeof(real));
     memcpy(mkl_imag, imag, sizeof(imag));
     if (!fft_mkl_forward(&mkl_plan, mkl_real, mkl_imag)) {
@@ -97,7 +103,8 @@ int main(void)
     memcpy(avx_real, real, sizeof(real));
     memcpy(avx_imag, imag, sizeof(imag));
     fft_avx256(avx_real, avx_imag, FFT_SIZE);
-
+    
+    //开始计时
     for (int r = 0; r < REPEAT; r++) {
         memcpy(mkl_real, real, sizeof(real));
         memcpy(mkl_imag, imag, sizeof(imag));
@@ -121,6 +128,11 @@ int main(void)
         avx_total_us += get_elapsed_us(start, end, frequency);
     }
 
+    double mkl_avg_us = mkl_total_us / (double)REPEAT;
+    double avx_avg_us = avx_total_us / (double)REPEAT;
+    double avx_over_mkl = avx_avg_us / mkl_avg_us;
+    double mkl_speedup_vs_avx = avx_avg_us / mkl_avg_us;
+
     printf("\nMKL FFT OUT (first %d bins)\n", OUTPUT_COUNT);
     for (int k = 0; k < OUTPUT_COUNT; k++) {
         printf("X[%d] = %f %+.6fi\n", k, mkl_real[k], mkl_imag[k]);
@@ -128,9 +140,13 @@ int main(void)
 
     printf("\nN = %d, repeat = %d\n", FFT_SIZE, REPEAT);
     printf("MKL DftiComputeForward average time: %.6f us\n",
-           mkl_total_us / (double)REPEAT);
+           mkl_avg_us);
     printf("AVX2 fft_avx256 average time:       %.6f us\n",
-           avx_total_us / (double)REPEAT);
+           avx_avg_us);
+    printf("AVX / MKL time ratio:               %.4f\n",
+           avx_over_mkl);
+    printf("MKL speedup vs AVX:                 %.4fx\n",
+           mkl_speedup_vs_avx);
     printf("max error: %.9e\n",
            max_complex_error(
                mkl_real,

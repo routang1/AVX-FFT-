@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+//检查 MKL 函数有没有执行成功
 static int report_mkl_error(MKL_LONG status, const char *api_name)
 {
     if (!DftiErrorClass(status, DFTI_NO_ERROR)) {
@@ -11,6 +12,7 @@ static int report_mkl_error(MKL_LONG status, const char *api_name)
     return 1;
 }
 
+//
 int fft_mkl_init(FFT_MKL_PLAN *plan, int N)
 {
     MKL_LONG status;
