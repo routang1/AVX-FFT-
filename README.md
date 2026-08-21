@@ -1,10 +1,24 @@
-# AVX-FFT-
-基于AVX指令实现FFT
+# AVX256 FFT
 
-进展：
-实现了AVX256实现FFT
-实现了计时功能，测试正常FFT一次133微秒，使用AVX256测试约40微秒
+使用 AVX256 实现单精度复数 FFT，并与 Intel oneMKL 比较性能和误差。
 
-后续优化方向：
-1.改进算法
-2.与MKL库比对时间
+## 目录
+
+```text
+src/        FFT 实现和头文件
+benchmark/  统一测试入口
+```
+
+## 编译
+
+```powershell
+D:\MSYS\ucrt64\bin\gcc.exe -std=c17 -O2 -mavx2 benchmark\benchmark.c src\fft_avx256.c src\fft_mkl.c -Isrc -I D:\Work_project\DSA\oneMKL\mkl\latest\include D:\Work_project\DSA\oneMKL\mkl\latest\lib\mkl_rt.lib -lm -o benchmark\benchmark.exe
+```
+
+## 运行
+
+```powershell
+cmd.exe /d /s /c 'call "D:\Work_project\DSA\oneMKL\setvars.bat" && "D:\Work_project\DSA\Code\C\benchmark\benchmark.exe"'
+```
+
+当前测试使用 4096 点 FFT，重复 1000 次，并通过 `QueryPerformanceCounter` 计时。

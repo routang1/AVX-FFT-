@@ -1,17 +1,11 @@
-#include <stdio.h>
-#include <math.h>
+#include "fft_avx256.h"
+
 #include <immintrin.h>
-#include <string.h>
-#include <time.h>
-#include <windows.h>
+#include <math.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-#define FFT_SIZE 4096
-#define REPEAT 1000
-#define OUTPUT_COUNT 8
 
 static void swap(float *a, float *b) {
     float temp = *a;
@@ -194,99 +188,4 @@ void fft_avx256(float *real, float *imag, int N)
             }
         }
     }
-}
-
-void fft(float *real, float *imag, int N) {
-    bit_reverse(real, imag, N);
-
-    for (int s = 1; s <= log2(N); s++) {
-        int m = 1 << s;
-        float wm_real = cos(2 * M_PI / m);
-        float wm_imag = -sin(2 * M_PI / m);
-
-        for (int k = 0; k < N; k += m) {
-            float w_real = 1.0;
-            float w_imag = 0.0;
-            for (int j = 0; j < m / 2; j++) {
-                float t_real = w_real * real[k + j + m / 2] - w_imag * imag[k + j + m / 2];
-                float t_imag = w_real * imag[k + j + m / 2] + w_imag * real[k + j + m / 2];
-                float u_real = real[k + j];
-                float u_imag = imag[k + j];
-
-                real[k + j] = u_real + t_real;
-                imag[k + j] = u_imag + t_imag;
-                real[k + j + m / 2] = u_real - t_real;
-                imag[k + j + m / 2] = u_imag - t_imag;
-
-                float temp_real = w_real * wm_real - w_imag * wm_imag;
-                w_imag = w_real * wm_imag + w_imag * wm_real;
-                w_real = temp_real;
-                //迭代W（n,k）
-            }
-        }
-    }
-}
-
-
-
-
-
-
-static void init_input(float *real, float *imag, int N)
-{
-    for (int i = 0; i < N; i++) {
-        float phase = (float)(2.0 * M_PI * i / N);
-        real[i] =
-            sinf(37.0f * phase)
-            + 0.5f * cosf(123.0f * phase)
-            + 0.25f * sinf(511.0f * phase);
-        imag[i] = 0.0f;
-    }
-}
-
-int main(void)
-{
-    LARGE_INTEGER start;
-    LARGE_INTEGER end;
-    LARGE_INTEGER frequency;
-    _Alignas(32) float real[FFT_SIZE];
-    _Alignas(32) float imag[FFT_SIZE];
-    _Alignas(32) float work_real[FFT_SIZE];
-    _Alignas(32) float work_imag[FFT_SIZE];
-    double total_us = 0.0;
-
-    init_input(real, imag, FFT_SIZE);
-    if (!QueryPerformanceFrequency(&frequency)) {
-        fprintf(stderr, "QueryPerformanceFrequency failed\n");
-        return 1;
-    }
-
-    /* 不计时预热。 */
-    memcpy(work_real, real, sizeof(real));
-    memcpy(work_imag, imag, sizeof(imag));
-    fft_avx256(work_real, work_imag, FFT_SIZE);
-
-    for (int r = 0; r < REPEAT; r++) {
-        memcpy(work_real, real, sizeof(real));
-        memcpy(work_imag, imag, sizeof(imag));
-
-        QueryPerformanceCounter(&start);
-        fft_avx256(work_real, work_imag, FFT_SIZE);
-        QueryPerformanceCounter(&end);
-
-        total_us +=
-            (double)(end.QuadPart - start.QuadPart)
-            * 1000000.0
-            / (double)frequency.QuadPart;
-    }
-
-    printf("\nAVX2 FFT OUT (first %d bins)\n", OUTPUT_COUNT);
-    for (int k = 0; k < OUTPUT_COUNT; k++) {
-        printf("X[%d] = %f %+.6fi\n", k, work_real[k], work_imag[k]);
-    }
-    printf("\nN = %d, repeat = %d\n", FFT_SIZE, REPEAT);
-    printf("AVX2 fft_avx256 average time: %.6f us\n",
-           total_us / (double)REPEAT);
-
-    return 0;
 }
